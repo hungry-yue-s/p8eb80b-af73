@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>panel</title>
+<style>
+body{font:16px/1.7 -apple-system,system-ui,sans-serif;margin:0;padding:24px}
+a{color:#06c}
+#s{font-size:17px}
+.hint{color:#666;font-size:14px;margin-top:24px}
+</style>
+</head>
+<body>
+<p id="s">正在查询面板地址…</p>
+<p><a href="ca.crt" download>下载 CA 证书</a> — 手机上只需安装一次，之后不再有证书告警。</p>
+<p class="hint">若长时间停在「正在跳转」，说明当前网络到不了这台机器（需要能路由到它的内网）。</p>
+<script>
+// The LAN IP is published to Duck DNS. This network's resolver answers every
+// external domain with a transparent proxy that cannot route back to the LAN,
+// so the name is read over DNS-over-HTTPS instead and then connected to by IP.
+const NAME = 'tmux-panel.duckdns.org';
+const PORT = 7681;
+const ENDPOINTS = [
+  'https://dns.alidns.com/resolve?name=' + NAME + '&type=A',
+  'https://dns.google/resolve?name=' + NAME + '&type=A'
+];
+const status = document.getElementById('s');
+
+(async () => {
+  for (const url of ENDPOINTS) {
+    try {
+      const body = await (await fetch(url)).json();
+      const answer = (body.Answer || []).find(a => a.type === 1);
+      if (!answer) continue;
+      status.textContent = '正在跳转到 ' + answer.data + ' …';
+      location.replace('https://' + answer.data + ':' + PORT + '/');
+      return;
+    } catch (e) { /* try the next resolver */ }
+  }
+  status.textContent = '查询失败，请检查网络后重试。';
+})();
+</script>
+</body>
+</html>
