@@ -46,8 +46,9 @@
   html, body { height: 100%; }
   body {
     margin: 0;
-    display: grid;
-    place-items: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     padding: clamp(16px, 5vw, 48px);
     padding-bottom: calc(clamp(16px, 5vw, 48px) + env(safe-area-inset-bottom, 0px));
     background: var(--bg-primary);
