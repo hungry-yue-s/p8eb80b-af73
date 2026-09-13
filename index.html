@@ -17,30 +17,56 @@ a{color:#06c}
 <p><a href="ca.crt" download>下载 CA 证书</a> — 手机上只需安装一次，之后不再有证书告警。</p>
 <p class="hint">若长时间停在「正在跳转」，说明当前网络到不了这台机器（需要能路由到它的内网）。</p>
 <script>
-// The LAN IP is published to Duck DNS. This network's resolver answers every
-// external domain with a transparent proxy that cannot route back to the LAN,
-// so the name is read over DNS-over-HTTPS instead and then connected to by IP.
+// The panel's LAN IP changes (and the machine roams between networks), and
+// browser localStorage is per-origin, so a session token stored under the old
+// IP is unreachable under the new one. This page keeps a copy of the token in
+// ITS origin and re-seeds the panel origin via a URL fragment on every hop.
 const NAME = 'tmux-panel.duckdns.org';
 const PORT = 7681;
+const TOKEN_KEY = 'panel_relay_token';
 const ENDPOINTS = [
   'https://dns.alidns.com/resolve?name=' + NAME + '&type=A',
   'https://dns.google/resolve?name=' + NAME + '&type=A'
 ];
-const status = document.getElementById('s');
+const statusEl = document.getElementById('s');
+const hash = location.hash || '';
 
-(async () => {
-  for (const url of ENDPOINTS) {
-    try {
-      const body = await (await fetch(url)).json();
-      const answer = (body.Answer || []).find(a => a.type === 1);
-      if (!answer) continue;
-      status.textContent = '正在跳转到 ' + answer.data + ' …';
-      location.replace('https://' + answer.data + ':' + PORT + '/');
-      return;
-    } catch (e) { /* try the next resolver */ }
-  }
-  status.textContent = '查询失败，请检查网络后重试。';
-})();
+function readStoredToken() {
+  try { return localStorage.getItem(TOKEN_KEY); } catch (e) { return null; }
+}
+
+// Role 1 — deposit: the panel bounces here right after a relayed login so this
+// origin's copy stays fresh, then we hand the token straight back.
+const storeMatch = /[#&]store=([^&]+)(?:&return=([^&]+))?/.exec(hash);
+if (storeMatch) {
+  const token = decodeURIComponent(storeMatch[1]);
+  const back = storeMatch[2] ? decodeURIComponent(storeMatch[2]) : '/';
+  try { localStorage.setItem(TOKEN_KEY, token); } catch (e) {}
+  location.replace(back + '#handoff=' + encodeURIComponent(token));
+} else {
+  // Role 2 — relay: resolve the current IP and hop to the panel, carrying the
+  // stored token if we have one, otherwise asking for a relayed login.
+  (async () => {
+    const saved = readStoredToken();
+    for (const url of ENDPOINTS) {
+      try {
+        const body = await (await fetch(url)).json();
+        const answer = (body.Answer || []).find(a => a.type === 1);
+        if (!answer) continue;
+        const base = 'https://' + answer.data + ':' + PORT;
+        if (saved) {
+          statusEl.textContent = '正在跳转到 ' + answer.data + ' …';
+          location.replace(base + '/#handoff=' + encodeURIComponent(saved));
+        } else {
+          statusEl.textContent = '正在跳转到 ' + answer.data + ' 登录页…';
+          location.replace(base + '/login.html?relay=1');
+        }
+        return;
+      } catch (e) { /* try the next resolver */ }
+    }
+    statusEl.textContent = '查询失败，请检查网络后重试。';
+  })();
+}
 </script>
 </body>
 </html>
